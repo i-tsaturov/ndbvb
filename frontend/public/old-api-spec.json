@@ -1,0 +1,51 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "OnlineBank API",
+    "version": "0.9.0-beta",
+    "description": "Internal development snapshot of the API (2025-03 build). Superseded by /api/v1; kept for the QA automation suite."
+  },
+  "basePath": "/",
+  "paths": {
+    "/api/v0/debug/users": {
+      "get": {
+        "summary": "QA: list all users"
+      }
+    },
+    "/api/v0/debug/config": {
+      "get": {
+        "summary": "QA: runtime configuration"
+      }
+    },
+    "/api/v0/debug/reset": {
+      "post": {
+        "summary": "QA: reseed the database"
+      }
+    },
+    "/internal/reconciliation/run": {
+      "post": {
+        "summary": "Nightly reconciliation (not deployed)"
+      }
+    },
+    "/api/v1/vault/status": {
+      "get": {
+        "summary": "Vault health probe"
+      }
+    },
+    "/api/v1/webhooks": {
+      "post": {
+        "summary": "Payment callback API: register a delivery URL"
+      }
+    },
+    "/api/v1/webhooks/{id}/test": {
+      "post": {
+        "summary": "Payment callback API: send a test event"
+      }
+    },
+    "/api/v1/payments/{id}/execute": {
+      "post": {
+        "summary": "Payment processing engine (settlement cron)"
+      }
+    }
+  }
+}

@@ -1,0 +1,81 @@
+name: ndbvb
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: bank
+      POSTGRES_PASSWORD: bank
+      POSTGRES_DB: onlinebank
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bank -d onlinebank"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    networks: [banknet]
+
+  backend:
+    build: ./backend
+    cap_add:
+      - NET_ADMIN
+    environment:
+      DATABASE_URL: postgresql+psycopg2://bank:bank@db:5432/onlinebank
+      SMS_GATEWAY_URL: http://sms-gateway:5001
+      JWT_WEAK_SECRET: ${JWT_WEAK_SECRET:-onlinebank-jwt-secret}
+      DEBUG: ${DEBUG:-true}
+      FLAG_IDOR: ${FLAG_IDOR:-FLAG{bola-statement-of-account-1004}}
+      FLAG_SQLI: ${FLAG_SQLI:-FLAG{sqli-cards-union-dump}}
+      FLAG_XXE: ${FLAG_XXE:-FLAG{xxe-file-read-app-secret}}
+      FLAG_RCE: ${FLAG_RCE:-FLAG{rce-pickle-legacy-import}}
+      FLAG_SSRF: ${FLAG_SSRF:-FLAG{ssrf-imds-credentials}}
+      FLAG_JWT: ${FLAG_JWT:-FLAG{jwt-forge-backoffice-token}}
+      FLAG_SHADOW: ${FLAG_SHADOW:-FLAG{shadow-api-v0-debug-config}}
+      FLAG_RACE: ${FLAG_RACE:-FLAG{race-negative-balance}}
+      FLAG_XSS: ${FLAG_XSS:-FLAG{xss-ops-console-banner}}
+      FLAG_MASSASSIGN: ${FLAG_MASSASSIGN:-FLAG{massassign-role-backoffice}}
+      FLAG_GRAPHQL: ${FLAG_GRAPHQL:-FLAG{graphql-secret-note}}
+    volumes:
+      - uploads:/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    # The metadata service is reachable as the cloud IMDS address
+    extra_hosts:
+      - "169.254.169.254:${META_IP:-172.31.0.10}"
+    networks: [banknet]
+
+  sms-gateway:
+    build: ./sms-gateway
+    ports:
+      - "9500:5001"
+    networks: [banknet]
+
+  metadata:
+    build: ./metadata
+    environment:
+      BACKEND_URL: http://backend:9000
+    # static address referenced by backend's extra_hosts entry
+    networks:
+      banknet:
+        ipv4_address: ${META_IP:-172.31.0.10}
+
+  web:
+    build: ./frontend
+    ports:
+      - "9080:80"
+    depends_on:
+      - backend
+    networks: [banknet]
+
+networks:
+  banknet:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${BANKNET_SUBNET:-172.31.0.0/24}
+
+volumes:
+  pgdata:
+  uploads:
